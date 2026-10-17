@@ -13,7 +13,7 @@ import { QuizSection } from './quiz-section'
 
 type AnalyzeArg = { files: File[]; urls: string[]; text: string }
 
-async function analyze(url: string, { arg }: { arg: AnalyzeArg }): Promise<Analysis> {
+async function analyze(url: string, { arg }: { arg: AnalyzeArg }): Promise<Analysis & { warnings?: string[] }> {
   const body = new FormData()
   arg.files.forEach((f) => body.append('files', f))
   arg.urls.forEach((u) => body.append('urls', u))
@@ -122,6 +122,16 @@ export function DistillApp() {
           </div>
         ) : (
           <div className="divide-y">
+            {data.warnings && data.warnings.length > 0 && (
+              <div role="status" className="mt-6 rounded-lg border border-chart-4/40 bg-chart-4/10 p-3 text-sm">
+                <p className="font-medium">Some sources were skipped:</p>
+                <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+                  {data.warnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <SummarySection analysis={data} />
             <KeywordsSection analysis={data} />
             <FlowSection analysis={data} />

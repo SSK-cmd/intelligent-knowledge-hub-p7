@@ -98,17 +98,17 @@ export async function POST(req: Request) {
     return Response.json({ error: `${tooBig.name} is larger than 15 MB.` }, { status: 400 })
   }
 
-  let parts: Array<TextPart | FilePart>
-  try {
-    const [fileParts, urlParts] = await Promise.all([
-      Promise.all(files.map(fileToParts)),
-      Promise.all(urls.map(urlToParts)),
-    ])
-    parts = [...fileParts.flat(), ...urlParts.flat()]
-  } catch (error) {
-    return Response.json({ error: (error as Error).message }, { status: 400 })
+  const settled = await Promise.allSettled([...files.map(fileToParts), ...urls.map(urlToParts)])
+  const parts: Array<TextPart | FilePart> = []
+  const warnings: string[] = []
+  for (const result of settled) {
+    if (result.status === 'fulfilled') parts.push(...result.value)
+    else warnings.push(result.reason instanceof Error ? result.reason.message : 'A source could not be read.')
   }
   if (pastedText) parts.push({ type: 'text', text: `Pasted text:\n\n${pastedText}` })
+  if (parts.length === 0) {
+    return Response.json({ error: warnings.join(' ') || 'No readable content found.' }, { status: 400 })
+  }
 
   try {
     const { output } = await generateText({
@@ -130,11 +130,18 @@ export async function POST(req: Request) {
       output: Output.object({ schema: analysisSchema }),
     })
 
-    return Response.json(output)
+    return Response.json({ ...output, warnings })
   } catch (error) {
     console.error('Analysis failed:', error)
-    const message = error instanceof Error ? error.message : ''
-    const isBilling = message.includes('credit card')
+    const messages: string[] = []
+    let current: unknown = error
+    for (let depth = 0; current && depth < 5; depth++) {
+      if (current instanceof Error) messages.push(current.message)
+      const next = current as { cause?: unknown; lastError?: unknown; errors?: unknown[] }
+      if (Array.isArray(next.errors)) messages.push(...next.errors.map(String))
+      current = next.lastError ?? next.cause
+    }
+    const isBilling = messages.some((m) => /credit card/i.test(m))
     return Response.json(
       {
         error: isBilling

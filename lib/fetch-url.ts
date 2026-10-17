@@ -96,16 +96,46 @@ function htmlToText(html: string) {
   return { title, text }
 }
 
+const BLOCKED_STATUSES = [401, 403, 406, 429, 451, 503]
+
+class BlockedError extends Error {}
+
+async function fetchViaReader(original: URL, maxChars: number): Promise<FetchedUrl> {
+  const res = await fetch(`https://r.jina.ai/${original.toString()}`, {
+    signal: AbortSignal.timeout(30_000),
+    headers: { Accept: 'text/plain', 'X-Return-Format': 'markdown' },
+  }).catch(() => null)
+  if (!res?.ok) throw new Error(`${original.hostname} blocks automated access. Copy the article text and paste it instead.`)
+  const text = new TextDecoder().decode(await readLimited(res))
+  const title = text.match(/^Title:\s*(.+)$/m)?.[1]?.trim() ?? ''
+  const content = text.split(/^Markdown Content:\s*$/m)[1]?.trim() ?? text
+  if (content.length < 50) throw new Error(`Couldn't find readable text at ${original.hostname}.`)
+  return { kind: 'text', url: original.toString(), title, text: content.slice(0, maxChars) }
+}
+
 export async function fetchUrl(raw: string, maxChars: number): Promise<FetchedUrl> {
-  let current = raw.trim()
+  const input = /^https?:\/\//i.test(raw.trim()) ? raw.trim() : `https://${raw.trim()}`
+  const original = await assertPublicUrl(input)
+  try {
+    return await fetchDirect(input, maxChars)
+  } catch (error) {
+    if (error instanceof BlockedError) return fetchViaReader(original, maxChars)
+    throw error
+  }
+}
+
+async function fetchDirect(raw: string, maxChars: number): Promise<FetchedUrl> {
+  let current = raw
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
     const url = await assertPublicUrl(current)
     const res = await fetch(url, {
       redirect: 'manual',
       signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; DistillBot/1.0)',
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
         Accept: 'text/html,application/xhtml+xml,application/pdf,text/plain,image/*;q=0.8,*/*;q=0.5',
+        'Accept-Language': 'en-US,en;q=0.9',
       },
     }).catch(() => {
       throw new Error(`Could not load ${url.hostname}.`)
@@ -117,6 +147,7 @@ export async function fetchUrl(raw: string, maxChars: number): Promise<FetchedUr
       current = new URL(location, url).toString()
       continue
     }
+    if (BLOCKED_STATUSES.includes(res.status)) throw new BlockedError(url.hostname)
     if (!res.ok) throw new Error(`${url.hostname} responded with status ${res.status}.`)
 
     const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
