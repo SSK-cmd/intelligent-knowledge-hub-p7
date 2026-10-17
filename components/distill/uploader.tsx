@@ -1,8 +1,9 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { FileText, Loader2, Sparkles, Upload, X } from 'lucide-react'
+import { FileText, Globe, Link2, Loader2, Plus, Sparkles, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
@@ -11,14 +12,43 @@ const FORMATS = ['PDF', 'DOCX', 'TXT', 'MD', 'CSV', 'JSON', 'HTML', 'PNG', 'JPG'
 
 type UploaderProps = {
   isAnalyzing: boolean
-  onAnalyze: (files: File[], text: string) => void
+  onAnalyze: (files: File[], urls: string[], text: string) => void
+}
+
+function normalizeUrl(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  try {
+    const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
+    return url.hostname.includes('.') ? url.toString() : null
+  } catch {
+    return null
+  }
 }
 
 export function Uploader({ isAnalyzing, onAnalyze }: UploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<File[]>([])
+  const [urls, setUrls] = useState<string[]>([])
+  const [urlInput, setUrlInput] = useState('')
+  const [urlError, setUrlError] = useState('')
   const [text, setText] = useState('')
   const [isDragging, setIsDragging] = useState(false)
+
+  function addUrl() {
+    const url = normalizeUrl(urlInput)
+    if (!url) {
+      setUrlError('Enter a valid web address, like example.com/article')
+      return
+    }
+    if (urls.length >= 5) {
+      setUrlError('You can add up to 5 web addresses.')
+      return
+    }
+    setUrls((prev) => (prev.includes(url) ? prev : [...prev, url]))
+    setUrlInput('')
+    setUrlError('')
+  }
 
   function addFiles(list: FileList | null) {
     if (!list) return
@@ -28,14 +58,16 @@ export function Uploader({ isAnalyzing, onAnalyze }: UploaderProps) {
     })
   }
 
-  const canSubmit = (files.length > 0 || text.trim().length > 0) && !isAnalyzing
+  const pendingUrl = normalizeUrl(urlInput)
+  const allUrls = pendingUrl && !urls.includes(pendingUrl) ? [...urls, pendingUrl].slice(0, 5) : urls
+  const canSubmit = (files.length > 0 || allUrls.length > 0 || text.trim().length > 0) && !isAnalyzing
 
   return (
     <form
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault()
-        if (canSubmit) onAnalyze(files, text)
+        if (canSubmit) onAnalyze(files, allUrls, text)
       }}
     >
       <div
@@ -104,6 +136,66 @@ export function Uploader({ isAnalyzing, onAnalyze }: UploaderProps) {
           ))}
         </ul>
       )}
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor="web-address" className="text-sm font-medium text-muted-foreground">
+          Or add a web address
+        </label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Globe
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              id="web-address"
+              type="url"
+              inputMode="url"
+              value={urlInput}
+              onChange={(e) => {
+                setUrlInput(e.target.value)
+                if (urlError) setUrlError('')
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
+                e.preventDefault()
+                addUrl()
+              }}
+              placeholder="https://example.com/article"
+              aria-invalid={Boolean(urlError)}
+              aria-describedby={urlError ? 'web-address-error' : undefined}
+              className="bg-card pl-9"
+            />
+          </div>
+          <Button type="button" variant="outline" onClick={addUrl} disabled={!urlInput.trim()}>
+            <Plus className="size-4" aria-hidden="true" />
+            Add
+          </Button>
+        </div>
+        {urlError && (
+          <p id="web-address-error" className="text-xs text-destructive">
+            {urlError}
+          </p>
+        )}
+        {urls.length > 0 && (
+          <ul className="flex flex-col gap-2">
+            {urls.map((url) => (
+              <li key={url} className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2 text-sm">
+                <Link2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                <span className="flex-1 truncate">{url}</span>
+                <button
+                  type="button"
+                  onClick={() => setUrls((prev) => prev.filter((u) => u !== url))}
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={`Remove ${url}`}
+                >
+                  <X className="size-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="flex flex-col gap-2">
         <label htmlFor="paste" className="text-sm font-medium text-muted-foreground">

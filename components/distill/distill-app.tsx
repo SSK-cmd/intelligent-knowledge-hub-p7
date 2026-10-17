@@ -11,11 +11,12 @@ import { WatchwordsSection } from './watchwords-section'
 import { StatsSection } from './stats-section'
 import { QuizSection } from './quiz-section'
 
-type AnalyzeArg = { files: File[]; text: string }
+type AnalyzeArg = { files: File[]; urls: string[]; text: string }
 
 async function analyze(url: string, { arg }: { arg: AnalyzeArg }): Promise<Analysis> {
   const body = new FormData()
   arg.files.forEach((f) => body.append('files', f))
+  arg.urls.forEach((u) => body.append('urls', u))
   body.append('text', arg.text)
   const res = await fetch(url, { method: 'POST', body })
   const json = await res.json().catch(() => ({ error: 'Unexpected server response.' }))
@@ -106,7 +107,7 @@ export function DistillApp() {
               </ul>
             </div>
             <div className="flex flex-col gap-3">
-              <Uploader isAnalyzing={isMutating} onAnalyze={(files, text) => trigger({ files, text })} />
+              <Uploader isAnalyzing={isMutating} onAnalyze={(files, urls, text) => trigger({ files, urls, text })} />
               {error && (
                 <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
                   {error.message}

@@ -1,11 +1,13 @@
 import { generateText, Output, type FilePart, type TextPart } from 'ai'
 import mammoth from 'mammoth'
 import { analysisSchema } from '@/lib/analysis-schema'
+import { fetchUrl } from '@/lib/fetch-url'
 
 export const maxDuration = 120
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024
 const MAX_FILES = 5
+const MAX_URLS = 5
 const MAX_TEXT_CHARS = 200_000
 
 const TEXT_EXTENSIONS = ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'html', 'htm', 'xml', 'rtf', 'log']
@@ -46,6 +48,24 @@ async function fileToParts(file: File): Promise<Array<TextPart | FilePart>> {
   throw new Error(`Unsupported file type: ${file.name}`)
 }
 
+async function urlToParts(raw: string): Promise<Array<TextPart | FilePart>> {
+  const page = await fetchUrl(raw, MAX_TEXT_CHARS)
+  if (page.kind === 'pdf') {
+    return [
+      { type: 'text', text: `Web document: ${page.url}` },
+      { type: 'file', data: page.bytes, mediaType: 'application/pdf' },
+    ]
+  }
+  if (page.kind === 'image') {
+    return [
+      { type: 'text', text: `Web image: ${page.url}` },
+      { type: 'file', data: page.bytes, mediaType: page.mediaType },
+    ]
+  }
+  const heading = page.title ? `${page.title} (${page.url})` : page.url
+  return [{ type: 'text', text: `Web page: ${heading}\n\n${page.text}` }]
+}
+
 export async function POST(req: Request) {
   let formData: FormData
   try {
@@ -56,12 +76,22 @@ export async function POST(req: Request) {
 
   const files = formData.getAll('files').filter((f): f is File => f instanceof File)
   const pastedText = String(formData.get('text') ?? '').slice(0, MAX_TEXT_CHARS).trim()
+  const urls = formData
+    .getAll('urls')
+    .map((u) => String(u).trim())
+    .filter(Boolean)
 
-  if (files.length === 0 && !pastedText) {
-    return Response.json({ error: 'Please upload at least one document or paste some text.' }, { status: 400 })
+  if (files.length === 0 && !pastedText && urls.length === 0) {
+    return Response.json(
+      { error: 'Please upload a document, add a web address, or paste some text.' },
+      { status: 400 },
+    )
   }
   if (files.length > MAX_FILES) {
     return Response.json({ error: `You can upload up to ${MAX_FILES} files at once.` }, { status: 400 })
+  }
+  if (urls.length > MAX_URLS) {
+    return Response.json({ error: `You can add up to ${MAX_URLS} web addresses at once.` }, { status: 400 })
   }
   const tooBig = files.find((f) => f.size > MAX_FILE_BYTES)
   if (tooBig) {
@@ -70,7 +100,11 @@ export async function POST(req: Request) {
 
   let parts: Array<TextPart | FilePart>
   try {
-    parts = (await Promise.all(files.map(fileToParts))).flat()
+    const [fileParts, urlParts] = await Promise.all([
+      Promise.all(files.map(fileToParts)),
+      Promise.all(urls.map(urlToParts)),
+    ])
+    parts = [...fileParts.flat(), ...urlParts.flat()]
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 400 })
   }
