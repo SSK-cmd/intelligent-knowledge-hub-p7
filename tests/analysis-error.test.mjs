@@ -33,6 +33,27 @@ test('keeps access, model, rate limit, and timeout failures distinct', () => {
   assert.equal(analysisError({ name: 'AI_NoObjectGeneratedError' }).code, 'AI_INVALID_OUTPUT')
 })
 
+test('recognizes the production free-tier restriction despite Gateway internal-error wrapping', () => {
+  const restriction = Object.assign(
+    new Error('Free tier users do not have access to this model. Upgrade to paid credits for unrestricted access.'),
+    { name: 'GatewayInternalServerError', statusCode: 403, type: 'internal_server_error' },
+  )
+  for (const error of [restriction, { lastError: restriction }, { cause: restriction }, { name: 'RestrictedModelsError' }]) {
+    const result = analysisError(error)
+    assert.equal(result.code, 'AI_MODEL_RESTRICTED')
+    assert.equal(result.status, 503)
+    assert.match(result.error, /paid AI credits/)
+  }
+  assert.equal(analysisError({ statusCode: 403, message: 'Denied by routing policy' }).code, 'AI_ACCESS_DENIED')
+})
+
+test('recognizes the earlier production card-verification failure as billing', () => {
+  const error = Object.assign(new Error('AI Gateway requires a valid credit card on file to service requests.'), {
+    name: 'GatewayInternalServerError', statusCode: 403,
+  })
+  assert.equal(analysisError(error).code, 'AI_BILLING_REQUIRED')
+})
+
 test('does not send provider details or secrets to the browser', () => {
   const secret = 'private-provider-key-and-document-content'
   for (const statusCode of [400, 401, 402, 403, 404, 429, 500, 504]) {

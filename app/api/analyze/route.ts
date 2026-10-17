@@ -113,7 +113,7 @@ export async function POST(req: Request) {
 
   try {
     const { output } = await generateText({
-      model: 'google/gemini-3.8-flash',
+      model: process.env.AI_MODEL?.trim() || 'google/gemini-3.8-flash',
       system:
         'You are an expert teacher and analyst. Read the provided material carefully and produce a faithful, accurate study pack grounded strictly in the material. Do not invent facts or statistics that are not supported by the material. Write in the same language as the material.',
       messages: [

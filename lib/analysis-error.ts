@@ -30,6 +30,14 @@ export function analysisError(error: unknown) {
   const hasName = (...names: string[]) => details.some((e) => names.includes(e.name ?? ''))
   const hasMessage = (pattern: RegExp) => details.some((e) => typeof e.message === 'string' && pattern.test(e.message))
 
+  // Gateway currently wraps this billing restriction as a 403 internal-server error.
+  if (hasName('RestrictedModelsError') || hasMessage(/free tier users do not have access to this model/i)) {
+    return {
+      status: 503,
+      code: 'AI_MODEL_RESTRICTED',
+      error: 'Analysis is unavailable because the selected AI model requires paid AI credits. Please contact the site owner.',
+    }
+  }
   if (hasStatus(402) || hasMessage(/credit card|insufficient (?:credits|funds)|payment required/i)) {
     return {
       status: 503,
