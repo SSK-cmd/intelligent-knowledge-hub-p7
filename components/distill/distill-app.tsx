@@ -44,7 +44,10 @@ const FEATURES = [
 ]
 
 export function DistillApp() {
-  const { trigger, data, error, isMutating, reset } = useSWRMutation('/api/analyze', analyze)
+  const { trigger, data, error, isMutating, reset } = useSWRMutation('/api/analyze', analyze, {
+    // The error is displayed below; do not also reject the form event handler.
+    throwOnError: false,
+  })
 
   return (
     <div className="min-h-dvh">

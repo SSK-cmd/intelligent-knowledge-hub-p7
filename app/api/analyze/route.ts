@@ -1,6 +1,7 @@
 import { generateText, Output, type FilePart, type TextPart } from 'ai'
 import mammoth from 'mammoth'
 import { analysisSchema } from '@/lib/analysis-schema'
+import { analysisError } from '@/lib/analysis-error'
 import { fetchUrl } from '@/lib/fetch-url'
 
 export const maxDuration = 120
@@ -132,23 +133,12 @@ export async function POST(req: Request) {
 
     return Response.json({ ...output, warnings })
   } catch (error) {
-    console.error('Analysis failed:', error)
-    const messages: string[] = []
-    let current: unknown = error
-    for (let depth = 0; current && depth < 5; depth++) {
-      if (current instanceof Error) messages.push(current.message)
-      const next = current as { cause?: unknown; lastError?: unknown; errors?: unknown[] }
-      if (Array.isArray(next.errors)) messages.push(...next.errors.map(String))
-      current = next.lastError ?? next.cause
-    }
-    const isBilling = messages.some((m) => /credit card/i.test(m))
+    const { status, code, error: message } = analysisError(error)
+    const requestId = crypto.randomUUID()
+    console.error('Analysis failed:', { requestId, code }, error)
     return Response.json(
-      {
-        error: isBilling
-          ? 'AI Gateway needs a credit card on your Vercel account to unlock free credits. Add one in your Vercel dashboard under AI, then try again.'
-          : 'Analysis failed. Please try again with a different document.',
-      },
-      { status: isBilling ? 402 : 500 },
+      { error: message, code, requestId },
+      { status },
     )
   }
 }
