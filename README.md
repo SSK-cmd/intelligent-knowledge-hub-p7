@@ -1,10 +1,20 @@
 # Distill
 
 Next.js document analysis app, published from v0 to Vercel. Analysis uses the
-AI SDK's default Vercel AI Gateway provider and `google/gemini-3.8-flash`.
-Set the server-side `AI_MODEL` environment variable to override the model ID.
-Any replacement must support structured output, images, and PDF inputs to
-preserve the app's upload features. Model access must be tested for the owning team.
+AI SDK's default Vercel AI Gateway provider with `google/gemini-2.5-flash`.
+Vercel's model directory lists this model as `availableToFreeTier: true`, with
+text, image, PDF, and structured-output support (verified 18 October 2026).
+
+Analysis automatically uses this free-credit-eligible model. The input screen
+and results label Gemini 3.8 Flash as **Payment required — not run**. There is no
+paid-model request or fallback, and `AI_MODEL` no longer overrides this policy.
+Free credits still have usage limits and require working Gateway authentication.
+The app does not purchase credits or enable auto top-up. Eligibility is not a
+billing guarantee if the owning team independently switches to paid credits.
+
+Model references:
+- https://vercel.com/ai-gateway/models?freeTier=true
+- https://ai-gateway.vercel.sh/v1/models
 
 ## Local checks
 
@@ -32,7 +42,7 @@ the `Analysis failed` log entry. Raw provider errors stay server-side.
 | --- | --- |
 | `AI_AUTHENTICATION_FAILED` | Confirm valid Gateway credentials for the production deployment. The SDK accepts `AI_GATEWAY_API_KEY` or Vercel OIDC authentication. A stale API key can override OIDC. |
 | `AI_BILLING_REQUIRED` | Review AI Gateway billing and available credits in the owning team. |
-| `AI_MODEL_RESTRICTED` | The model is blocked on free credits. Purchase AI Gateway credits in the owning team, or configure `AI_MODEL` with a compatible model the team can access and redeploy. |
+| `AI_MODEL_RESTRICTED` | The model is blocked on free credits. Recheck free-tier eligibility in the model directory and update `lib/analysis-model.ts` to a compatible eligible model. No paid fallback is attempted. |
 | `AI_ACCESS_DENIED` | Review team permissions and Gateway routing/access policies. |
 | `AI_MODEL_UNAVAILABLE` | Confirm the configured model is available to the project. |
 | `AI_RATE_LIMITED` | Wait and retry; review provider/team limits if persistent. |
@@ -53,12 +63,9 @@ Production logs show `google/gemini-3.8-flash` rejected with
 provider attempt. Earlier logs show a separate credit-card verification error.
 Adding a card alone does not establish access to a model restricted on free credits.
 
-To keep the current model, add paid **AI Gateway credits** to the team that
-owns the deployment, then retry the existing site. This account-level change
-does not require a code deployment. The error-handling patch alone does not
-remove the Gateway restriction. A hosting-plan upgrade is not the remedy named
-by this error.
-Vercel's pricing documentation states that purchasing credits transitions the
-team to the paid tier and ends its monthly free-credit allowance.
+The fix switches generation to Gemini 2.5 Flash and keeps the restricted model
+as a payment-required notice only. Deploy the updated branch through v0/Vercel,
+then confirm a complete study pack with a short pasted document and uploaded PDF.
+A successful live request is still required to verify account-specific access.
 
 Pricing reference: https://vercel.com/docs/ai-gateway/pricing

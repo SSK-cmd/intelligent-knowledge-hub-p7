@@ -2,6 +2,7 @@ import { generateText, Output, type FilePart, type TextPart } from 'ai'
 import mammoth from 'mammoth'
 import { analysisSchema } from '@/lib/analysis-schema'
 import { analysisError } from '@/lib/analysis-error'
+import { ANALYSIS_MODEL, PAYMENT_REQUIRED_MODEL } from '@/lib/analysis-model'
 import { fetchUrl } from '@/lib/fetch-url'
 
 export const maxDuration = 120
@@ -113,7 +114,7 @@ export async function POST(req: Request) {
 
   try {
     const { output } = await generateText({
-      model: process.env.AI_MODEL?.trim() || 'google/gemini-3.8-flash',
+      model: ANALYSIS_MODEL.id,
       system:
         'You are an expert teacher and analyst. Read the provided material carefully and produce a faithful, accurate study pack grounded strictly in the material. Do not invent facts or statistics that are not supported by the material. Write in the same language as the material.',
       messages: [
@@ -131,7 +132,12 @@ export async function POST(req: Request) {
       output: Output.object({ schema: analysisSchema }),
     })
 
-    return Response.json({ ...output, warnings })
+    return Response.json({
+      ...output,
+      warnings,
+      model: ANALYSIS_MODEL,
+      paymentRequiredModel: PAYMENT_REQUIRED_MODEL,
+    })
   } catch (error) {
     const { status, code, error: message } = analysisError(error)
     const requestId = crypto.randomUUID()
