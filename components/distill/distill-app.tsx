@@ -3,6 +3,8 @@
 import useSWRMutation from 'swr/mutation'
 import { ArrowLeft, Brain, Network, Tags, BarChart3, Layers, ListChecks, FileText } from 'lucide-react'
 import type { Analysis } from '@/lib/analysis-schema'
+import { ANALYSIS_MODEL, PAYMENT_REQUIRED_MODEL, type AnalysisModelInfo } from '@/lib/analysis-model'
+import { ModelStatus } from './model-status'
 import { Uploader } from './uploader'
 import { SummarySection } from './summary-section'
 import { KeywordsSection } from './keywords-section'
@@ -13,7 +15,7 @@ import { QuizSection } from './quiz-section'
 
 type AnalyzeArg = { files: File[]; urls: string[]; text: string }
 
-async function analyze(url: string, { arg }: { arg: AnalyzeArg }): Promise<Analysis & { warnings?: string[] }> {
+async function analyze(url: string, { arg }: { arg: AnalyzeArg }): Promise<Analysis & AnalysisModelInfo & { warnings?: string[] }> {
   const body = new FormData()
   arg.files.forEach((f) => body.append('files', f))
   arg.urls.forEach((u) => body.append('urls', u))
@@ -44,7 +46,10 @@ const FEATURES = [
 ]
 
 export function DistillApp() {
-  const { trigger, data, error, isMutating, reset } = useSWRMutation('/api/analyze', analyze)
+  const { trigger, data, error, isMutating, reset } = useSWRMutation('/api/analyze', analyze, {
+    // The error is displayed below; do not also reject the form event handler.
+    throwOnError: false,
+  })
 
   return (
     <div className="min-h-dvh">
@@ -107,6 +112,7 @@ export function DistillApp() {
               </ul>
             </div>
             <div className="flex flex-col gap-3">
+              <ModelStatus model={ANALYSIS_MODEL} paymentRequiredModel={PAYMENT_REQUIRED_MODEL} />
               <Uploader isAnalyzing={isMutating} onAnalyze={(files, urls, text) => trigger({ files, urls, text })} />
               {error && (
                 <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
@@ -122,6 +128,9 @@ export function DistillApp() {
           </div>
         ) : (
           <div className="divide-y">
+            <div className="py-6">
+              <ModelStatus model={data.model} paymentRequiredModel={data.paymentRequiredModel} />
+            </div>
             {data.warnings && data.warnings.length > 0 && (
               <div role="status" className="mt-6 rounded-lg border border-chart-4/40 bg-chart-4/10 p-3 text-sm">
                 <p className="font-medium">Some sources were skipped:</p>

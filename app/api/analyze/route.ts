@@ -1,6 +1,8 @@
 import { generateText, Output, type FilePart, type TextPart } from 'ai'
 import mammoth from 'mammoth'
 import { analysisSchema } from '@/lib/analysis-schema'
+import { analysisError } from '@/lib/analysis-error'
+import { ANALYSIS_MODEL, PAYMENT_REQUIRED_MODEL } from '@/lib/analysis-model'
 import { fetchUrl } from '@/lib/fetch-url'
 
 export const maxDuration = 120
@@ -112,7 +114,7 @@ export async function POST(req: Request) {
 
   try {
     const { output } = await generateText({
-      model: 'google/gemini-3.8-flash',
+      model: ANALYSIS_MODEL.id,
       system:
         'You are an expert teacher and analyst. Read the provided material carefully and produce a faithful, accurate study pack grounded strictly in the material. Do not invent facts or statistics that are not supported by the material. Write in the same language as the material.',
       messages: [
@@ -130,25 +132,19 @@ export async function POST(req: Request) {
       output: Output.object({ schema: analysisSchema }),
     })
 
-    return Response.json({ ...output, warnings })
+    return Response.json({
+      ...output,
+      warnings,
+      model: ANALYSIS_MODEL,
+      paymentRequiredModel: PAYMENT_REQUIRED_MODEL,
+    })
   } catch (error) {
-    console.error('Analysis failed:', error)
-    const messages: string[] = []
-    let current: unknown = error
-    for (let depth = 0; current && depth < 5; depth++) {
-      if (current instanceof Error) messages.push(current.message)
-      const next = current as { cause?: unknown; lastError?: unknown; errors?: unknown[] }
-      if (Array.isArray(next.errors)) messages.push(...next.errors.map(String))
-      current = next.lastError ?? next.cause
-    }
-    const isBilling = messages.some((m) => /credit card/i.test(m))
+    const { status, code, error: message } = analysisError(error)
+    const requestId = crypto.randomUUID()
+    console.error('Analysis failed:', { requestId, code }, error)
     return Response.json(
-      {
-        error: isBilling
-          ? 'AI Gateway needs a credit card on your Vercel account to unlock free credits. Add one in your Vercel dashboard under AI, then try again.'
-          : 'Analysis failed. Please try again with a different document.',
-      },
-      { status: isBilling ? 402 : 500 },
+      { error: message, code, requestId },
+      { status },
     )
   }
 }
